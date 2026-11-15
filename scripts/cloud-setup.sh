@@ -3,6 +3,11 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 source scripts/activate-cloud.sh
+export LANGUE_TEST_API="${LANGUE_TEST_API:-28}"
+if [[ ! "$LANGUE_TEST_API" =~ ^(26|28|35)$ ]]; then
+  echo 'LANGUE_TEST_API must be 26, 28 or 35' >&2
+  exit 2
+fi
 export LANGUE_WITH_EMULATOR=0
 LANGUE_BUILD_ONLY=0
 for argument in "$@"; do
@@ -59,7 +64,7 @@ if pathlib.Path('/etc/ssl/certs/java/cacerts').is_file():
 subprocess.run(args+['--licenses'],input='y\n'*100,text=True,check=True)
 packages=['platform-tools','platforms;android-35','build-tools;34.0.0','build-tools;35.0.0']
 if os.environ.get('LANGUE_WITH_EMULATOR')=='1':
- packages+=['emulator','system-images;android-28;default;x86_64']
+ packages+=['emulator','system-images;android-'+os.environ['LANGUE_TEST_API']+';default;x86_64']
 subprocess.run(args+packages,check=True)
 pathlib.Path('local.properties').write_text('sdk.dir='+str(base/'android-sdk')+'\n')
 PY

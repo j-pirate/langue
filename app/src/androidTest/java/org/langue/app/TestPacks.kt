@@ -30,13 +30,13 @@ internal object TestPacks {
         entries,
     )
 
-    fun zip(pack: LanguagePack): ByteArrayInputStream = ByteArrayInputStream(archive(
+    fun zip(pack: LanguagePack, audioFiles: Map<String, ByteArray> = emptyMap()): ByteArrayInputStream = ByteArrayInputStream(archive(
         linkedMapOf(
             "manifest.json" to PackJson.json.encodeToString(pack.manifest).toByteArray(),
             "categories.json" to PackJson.json.encodeToString(pack.categories).toByteArray(),
             "entries.json" to PackJson.json.encodeToString(pack.entries).toByteArray(),
         ).also { files ->
-            pack.entries.mapNotNull { it.audio }.forEach { files[it] = tinyWave() }
+            pack.entries.mapNotNull { it.audio }.forEach { files[it] = audioFiles[it] ?: tinyWave() }
         }
     ))
 

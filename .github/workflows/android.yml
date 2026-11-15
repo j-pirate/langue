@@ -31,6 +31,14 @@ jobs:
         run: ./gradlew --no-daemon :app:lintUniversalDebug
       - name: Build empty universal APK
         run: ./gradlew --no-daemon :app:assembleUniversalDebug
+      - name: Verify dedicated APK and unsigned release bundles
+        run: >-
+          ./gradlew --no-daemon :app:assembleDedicatedDebug :app:bundleUniversalRelease :app:bundleDedicatedRelease
+          -PdedicatedPack="$PWD/app/src/test/resources/variant-pack.zip"
+          -PdedicatedBrandingDir="$PWD/app/src/test/resources/branding"
+          -PdedicatedId=org.langue.ci
+          "-PdedicatedName=L'atelier & langues"
+          -PappVersionCode=2 -PappVersionName=1.1.0
       - name: Upload reports
         if: always()
         uses: actions/upload-artifact@v4
