@@ -1,0 +1,12 @@
+<resources xmlns:tools="http://schemas.android.com/tools" tools:locale="fr">
+    <string name="error_invalid_archive">Archive ZIP invalide ou dangereuse. Vérifiez le fichier du pack avant de réessayer.</string>
+    <string name="error_incompatible_pack">Ce pack est incompatible. Vérifiez son format et les langues de la version installée.</string>
+    <string name="error_invalid_version">Version du pack incorrecte. Une mise à jour doit avoir un numéro supérieur à la version installée.</string>
+    <string name="error_missing_audio">Un fichier audio référencé est absent. Ajoutez-le au pack ou retirez sa référence.</string>
+    <string name="error_unknown_category">Un élément référence une catégorie inexistante. Corrigez les identifiants du pack.</string>
+    <string name="error_insufficient_storage">Espace de stockage insuffisant. Libérez de la place sur votre appareil, puis réessayez.</string>
+    <string name="error_invalid_backup">Sauvegarde de progression invalide. Vérifiez le format, la version et la cohérence du fichier.</string>
+    <string name="error_missing_pack">Un pack nécessaire est absent. Installez les packs concernés avant de réessayer.</string>
+    <string name="error_storage_unavailable">Impossible de lire ou d’écrire le fichier. Vérifiez son accès et le stockage de votre appareil.</string>
+    <string name="error_invalid_content">Les données du pack sont invalides. Vérifiez les fichiers JSON et les champs obligatoires.</string>
+</resources>
