@@ -1,3 +1,12 @@
+## Licence
+
+Copyright (C) 2026 [j-pirate]
+
+Ce projet est distribué sous licence
+GNU General Public License version 3.0.
+
+Voir le fichier LICENSE pour les conditions complètes.
+
 # Langue
 
 Application Android native d’apprentissage du vocabulaire, générique et entièrement locale. Le dépôt fournit le moteur, l’interface et le format de contenu ; **l’application universelle ne contient aucun vocabulaire ni pack pédagogique par défaut**.
