@@ -18,11 +18,19 @@ jobs:
           distribution: temurin
           java-version: '21'
       - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
       - name: Install SDK targets
         run: sdkmanager 'platform-tools' 'platforms;android-35' 'build-tools;34.0.0' 'build-tools;35.0.0'
       - uses: gradle/actions/setup-gradle@v4
-      - name: Test, lint and assemble the empty universal application
-        run: ./gradlew --no-daemon :engine:test :app:testUniversalDebugUnitTest :app:lintUniversalDebug :app:assembleUniversalDebug
+      - name: Test vocabulary and quiz engine
+        run: ./gradlew --no-daemon :engine:test
+      - name: Test Android application
+        run: ./gradlew --no-daemon :app:testUniversalDebugUnitTest
+      - name: Android Lint
+        run: ./gradlew --no-daemon :app:lintUniversalDebug
+      - name: Build empty universal APK
+        run: ./gradlew --no-daemon :app:assembleUniversalDebug
       - name: Upload reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -37,3 +45,5 @@ jobs:
         with:
           name: universal-debug-apk
           path: app/build/outputs/apk/universal/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
