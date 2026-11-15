@@ -51,4 +51,10 @@ object PackJson {
     }
 }
 
-class PackException(message: String, cause: Throwable? = null) : Exception(message, cause)
+class PackException(
+    override val reason: FailureReason,
+    message: String,
+    cause: Throwable? = null,
+) : Exception(message, cause), ReasonedFailure {
+    constructor(message: String, cause: Throwable? = null) : this(FailureReason.INVALID_CONTENT, message, cause)
+}
