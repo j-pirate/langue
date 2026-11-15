@@ -17,7 +17,7 @@ Au premier lancement, ses trois onglets **Vocabulaire · Quiz · Paramètres** s
 
 - Catégories produites à partir du pack, recherche dans les textes source/cible, variantes et translittérations ; recherche indépendante de la casse et des accents, affichage Unicode conservé.
 - Fiches de vocabulaire, traductions alternatives, translittération facultative, indication de consultation et audio local facultatif.
-- Quiz à trois choix issus du contenu installé, réponses mélangées, correction immédiate, série courante, record et statistiques persistants. Les équivalences connues sont regroupées ; un contenu insuffisant produit un état explicatif.
+- Quiz à trois choix issus du contenu installé, réponses mélangées, correction immédiate, série courante, record et statistiques persistants. Les équivalences sont préparées hors du thread principal, conservées pour le pack actif et invalidées après changement ou mise à jour ; un contenu insuffisant produit un état explicatif.
 - Plusieurs packs installés, sélection de la combinaison de langues réellement disponible, mise à jour et suppression avec confirmation.
 - Export/restauration JSON de la progression et réinitialisation confirmée du pack actif.
 - Variantes `universal` et `dedicated` utilisant exactement le même moteur.
@@ -70,7 +70,7 @@ Pour demander ultérieurement la création d’un pack : fournir la combinaison 
 
 ## Applications dédiées
 
-Voir les [instructions de variantes et de publication](docs/VARIANTS.md). La variante dédiée embarque un ZIP local dans l’APK et l’importe au premier lancement. Son nom, son identifiant, son icône, son accent et ses métadonnées sont configurables. Chaque identifiant Android possède son propre stockage et sa propre progression.
+Voir les [instructions de variantes et de publication](docs/VARIANTS.md) et la [procédure Google Play](docs/GOOGLE_PLAY.md). La variante dédiée embarque un ZIP local dans l’APK et l’importe au premier lancement. Son nom, son identifiant, son icône, son accent et ses métadonnées sont configurables. Chaque identifiant Android possède son propre stockage et sa propre progression.
 
 ## Architecture et données
 
@@ -82,7 +82,7 @@ Voir [l’architecture](docs/ARCHITECTURE.md) et [le format de sauvegarde](docs/
 | `app/.../ui/` | Interface Compose, état MVVM, navigation, confirmations et sélecteurs de documents |
 | `app/.../data/` | Room, DataStore, installation/mise à jour des packs, progression et sauvegardes |
 | `app/.../audio/` | Lecture locale Android avec une seule lecture active et libération des ressources |
-| `app/src/main/res/values/strings.xml` | Textes traduisibles de l’interface |
+| `app/src/main/res/values/strings.xml`, `errors.xml` | Textes et erreurs traduisibles de l’interface |
 
 Les statistiques et contenus importés restent dans le stockage privé de l’application. Supprimer un pack supprime également sa progression locale ; exporter auparavant si nécessaire. Les sauvegardes de progression ne contiennent pas le vocabulaire ni les fichiers audio. La sauvegarde automatique Android est désactivée ; l’export explicite reste sous le contrôle de l’utilisateur.
 
@@ -101,5 +101,7 @@ Pour les tests instrumentés, connecter un appareil ou un émulateur Android API
 ```
 
 Avant une publication, vérifier également sur un appareil réel : premier démarrage vide, trois onglets, import d’un pack personnel, recherche et écriture RTL, lecture MP3/M4A, quiz, redémarrage, mise à jour du même pack et restauration d’une sauvegarde. Les tests JVM ne remplacent pas la vérification du décodage audio et des sélecteurs de documents sur Android.
+
+Les erreurs d’import, de version, d’audio, de catégorie, de sauvegarde et de stockage sont distinguées en français. Les diagnostics applicatifs se limitent aux opérations, codes et classes d’erreur, sans contenu des packs ni chemins privés.
 
 Les versions des dépendances sont explicites dans les fichiers Gradle. Garder le schéma documenté compatible ou prévoir une migration et ses tests avant de changer les données persistées. Aucun secret, service tiers ou variable d’authentification n’est requis par l’application.

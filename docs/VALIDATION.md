@@ -1,30 +1,73 @@
-# Validation du 15 novembre 2026
+# Audit et validation du 15 novembre 2026
 
-Vérifications réalisées dans l’environnement cloud avec un JDK Temurin 21 complet, Gradle 8.9 et le SDK Android 35.
+L’audit conserve Kotlin, Compose, MVVM, Room, DataStore et le schéma de packs 1. Aucun contenu pédagogique n’est ajouté à l’APK universelle. Les essais ci-dessous sont réellement exécutés, sans compter deux fois les répétitions ni les contrôles GitHub Actions.
 
-| Vérification | Résultat observé |
+| Vérification finale locale | Résultat |
 | --- | --- |
-| `:engine:test` | 28 tests exécutés, 28 réussis, aucun ignoré |
-| APK universelle Debug | Compilée ; signature de développement vérifiée ; aucun `assets/packs/` |
-| APK dédiée Debug | Compilée avec `org.langue.buildtest`, le nom `L'atelier & langues` et le ZIP de contrôle exact |
-| Sources de tests JVM Android | Compilation réussie |
-| APK des tests instrumentés | Compilation réussie |
-| Tests instrumentés sur Android 9 / API 28 AOSP x86_64 | 7 tests exécutés, 7 réussis, bilan AndroidJUnitRunner `OK (7 tests)` |
-| Interface vide | Écran rendu inspecté après les tests ; trois onglets utilisables ; démarrage revérifié après redémarrage de l’émulateur |
-| Suite Robolectric | Non exécutée : dépendance native bloquée par une redirection Maven vers `gcp.mirrors.maven.org` |
-| Lint | Non terminé : la génération du modèle des tests rencontre la même dépendance bloquée |
+| Tests moteur Kotlin | **43 exécutés, 43 réussis**, aucun ignoré |
+| Tests unitaires Android/Robolectric | **24 exécutés, 24 réussis**, aucun ignoré ; couverture SDK 26 et 34 |
+| Android Lint | **0 erreur, 7 avertissements** |
+| APK universelle Debug | Compilation et signature Debug vérifiées ; aucun pack intégré |
+| APK dédiée Debug | Compilation vérifiée ; nom, icône, couleur, identifiant et version personnalisés |
+| AAB universel et dédié Release | Compilation et structure ZIP vérifiées ; sorties non signées, aucun secret de production utilisé |
+| Android 8.0 / API 26 AOSP x86_64 | **12 tests instrumentés exécutés, 12 réussis**, bilan `OK (12 tests)` |
+| Android 15 / API 35 AOSP x86_64 | **12 tests instrumentés exécutés, 12 réussis**, bilan `OK (12 tests)` |
 
-Les sept tests Android couvrent le premier lancement et les onglets, un pack importé avec catégories/détails/variantes/translittération/recherche, une réponse de quiz et ses statistiques, les confirmations de réinitialisation, la conservation de progression après réouverture et mise à jour, les sauvegardes, les refus d’import/restauration, la résolution locale de l’audio, le décodage et la lecture réelle d’un WAV, et la gestion d’un fichier absent.
+Total : **91 exécutions de tests réussies**. Les rapports se trouvent dans `engine/build/test-results/test/`, `app/build/test-results/testUniversalDebugUnitTest/` et `app/build/reports/device/api26/` ou `api35/`.
 
-Les fixtures sont limitées aux sources de test. La variante dédiée de contrôle n’est pas une application linguistique à distribuer ; son pack est vide de vocabulaire et sert à vérifier l’intégration d’un ZIP externe. L’APK universelle est la livraison vierge destinée au développement et aux essais.
+## Ce qui est couvert
 
-Rapports locaux générés :
+- Premier lancement vierge et navigation des trois onglets.
+- Import ZIP, catégories, traductions, variantes, translittération et recherche.
+- Quiz à trois réponses, correction, absence de répétition immédiate, équivalences et statistiques.
+- Mise à jour de pack, conservation des identifiants stables, réouverture du stockage, export/restauration et refus atomique des fichiers invalides.
+- Unicode, recherche sans accents, conservation des caractères et direction RTL du texte.
+- Décodeurs Android réels pour WAV, MP3 et M4A, fichier manquant et audio corrompu. Les enregistrements sont des silences générés localement dans les seuls assets de test.
+- Messages français différenciés, erreurs ENOSPC réelles, diagnostics sans messages d’exception, chemins ni contenu privé.
+- Invalidation du quiz après changement/mise à jour du pack et après erreur de lecture ; reprise des lecteurs Room/DataStore après Réessayer.
 
-- `engine/build/reports/tests/test/index.html` et `engine/build/test-results/test/`.
-- `app/build/reports/device/instrumentation.txt` et `empty-app.png`.
+Le test de charge prépare **50 000 entrées**, puis génère **20 000 questions** à partir de la même préparation. Une exécution locale a mesuré 299 ms de préparation et 69 ms pour les tirages ; ces valeurs dépendent de la machine. Un contrôle structurel vérifie aussi que les tirages ne reparcourent pas les entrées originales, avec une marge de temps de test de 30 s.
 
-Pour reproduire les vérifications Android, voir [DEVICE_TESTS.md](DEVICE_TESTS.md). Les sorties de compilation et rapports sont ignorés par Git ; ils sont régénérés par les commandes documentées.
+## Problèmes détectés et corrections
 
-L’autorisation de `gcp.mirrors.maven.org` a été enregistrée dans le brouillon de configuration de l’environnement. Elle reste à enregistrer dans les paramètres de la machine pour terminer Robolectric et lint. La publication de l’environnement et une restauration dans une nouvelle tâche n’ont pas été effectuées par l’agent. La CI GitHub a été ajoutée mais n’a pas été exécutée sur GitHub pendant cette intervention.
+1. `setup-android@v3` demandait par défaut le paquet obsolète `tools`. Le workflow utilise explicitement `packages: platform-tools`, puis installe les plateformes/build-tools requis.
+2. Robolectric échouait avant les tests car son verrou de téléchargement visait le répertoire personnel système en lecture seule. Le processus JVM de test utilise maintenant un répertoire personnel dédié dans le cache Gradle. Sur le code initial, les 28 tests moteur et 14 tests Android existants ont ensuite réussi.
+3. Lint détectait `windowLightNavigationBar` dans les ressources API 26 alors que cet attribut demande API 27. Il est isolé dans `values-v27` ; le thème commun est conservé.
+4. Le quiz reconstruisait ses équivalences à chaque question. Une préparation immuable par pack est calculée sur `Dispatchers.Default` puis réutilisée ; un tirage coûte un nombre constant d’opérations.
+5. Les causes d’erreur étaient masquées ; les erreurs de lecture asynchrones pouvaient aussi échapper aux gestionnaires d’actions. Des codes typés, ressources françaises, journaux limités et lecteurs relançables corrigent ces cas.
 
-Le sélecteur de documents Android utilise les API SAF réelles, mais son interaction avec les différents fournisseurs de fichiers et la lecture de MP3/M4A sur les appareils de diffusion ne sont pas validées par ces tests WAV. L’APK est une version Debug ; une distribution publique demande une signature de publication sous le contrôle de son propriétaire.
+Le premier essai Android 15 en émulation logicielle s’est interrompu avant le premier test par un ANR de démarrage. La trace plaçait le thread principal dans la vérification DEX et le système connaissait aussi des ANR au premier démarrage. Après diagnostic et initialisation de l’appareil, le runner a été limité au paquet `org.langue.app`, en exigeant toujours les douze résultats. La réexécution a réussi les douze tests en 161,657 s. Aucun test ni assertion n’a été retiré. L’essai Android 8.0 final a réussi les douze tests en 65,155 s.
+
+## Compilation et variantes
+
+JDK Temurin 21 complet, Gradle 8.9, Android Gradle Plugin 8.7.3, SDK de compilation/cible 35 et minimum 26. Commande complète exécutée :
+
+```sh
+source scripts/activate-cloud.sh
+./gradlew :engine:test :app:testUniversalDebugUnitTest :app:lintUniversalDebug \
+  :app:assembleUniversalDebug :app:assembleUniversalDebugAndroidTest \
+  :app:assembleDedicatedDebug :app:bundleUniversalRelease :app:bundleDedicatedRelease \
+  -PdedicatedPack="$PWD/app/src/test/resources/variant-pack.zip" \
+  -PdedicatedBrandingDir="$PWD/app/src/test/resources/branding" \
+  -PdedicatedId=org.langue.audit "-PdedicatedName=L'atelier & langues" \
+  -PdedicatedAccent="#346E85" -PappVersionCode=2 -PappVersionName=1.1.0
+```
+
+Le manifeste dédié donne effectivement `org.langue.audit`, le nom comportant apostrophe et esperluette, le code 2 et la version 1.1.0. L’icône compilée contient l’accent bleu du dossier de test externe. L’APK/AAB universels contiennent zéro pack ; leurs équivalents dédiés incorporent exactement le ZIP de contrôle, vide de vocabulaire.
+
+## Vérification GitHub
+
+Le run initial fourni dans la demande échouait avant Gradle. Après la correction du SDK, le run intermédiaire a révélé le problème de thème API 27. La compilation complète corrigée est confirmée sur le commit fonctionnel `1e7e90a4e7bf7e5ac01281f03e63cc1a49ad47a2` :
+
+- [Workflow réussi](https://github.com/j-pirate/langue/actions/runs/43764882601), durée 5 min 25 s.
+- Toutes les étapes réussies : SDK, tests moteur, tests Android unitaires, lint, APK universelle, APK dédiée et bundles Release, téléversements.
+- [Artefact `universal-debug-apk`](https://github.com/j-pirate/langue/actions/runs/43764882601/artifacts/14181284123), 16,3 Mo ; connexion GitHub nécessaire pour le télécharger.
+- Artefact `reports`, 51,3 Ko. Les métadonnées et conclusions des étapes ont été vérifiées dans les pages publiques du run.
+
+Le workflow conserve les rapports même en cas d’échec et refuse un téléversement d’APK sans fichier. Il ne signe ni ne publie une application de production. Les avertissements GitHub sur les versions d’actions Node 20 et la migration d’Ubuntu n’ont pas empêché cette compilation.
+
+## Limites explicites
+
+- Les sorties Release sont non signées : la signature réelle exige la clé d’importation du propriétaire, conservée hors Git. Aucune clé de production n’est générée et aucune publication Google Play n’est effectuée. Voir [GOOGLE_PLAY.md](GOOGLE_PLAY.md), notamment la vérification de l’exigence actuelle de SDK cible.
+- Les sorties audio physiques et les différents fournisseurs du sélecteur de documents SAF n’ont pas été testés sur des téléphones physiques ; les tests utilisent les vraies API et les décodeurs de deux versions Android émulées.
+- L’API `api.github.com` reste refusée par le réseau de la machine (`CONNECT 403`). Le push Git fonctionne et les résultats Actions sont vérifiables publiquement ; l’ouverture automatique d’une nouvelle PR par `gh pr create` est donc bloquée. La PR n° 1 du seul correctif CI a été fusionnée séparément par le propriétaire ; elle ne contient pas les corrections restantes. [Comparaison de la branche de correction](https://github.com/j-pirate/langue/compare/main...fix/android-reliability).

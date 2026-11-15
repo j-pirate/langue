@@ -65,7 +65,7 @@ try:
     chunks = []
     with (REPORT / 'instrumentation.txt').open('w') as output:
         for chunk in device.streaming_shell(
-            'am instrument -w -r org.langue.universal.test/androidx.test.runner.AndroidJUnitRunner',
+            'am instrument -w -r -e package org.langue.app org.langue.universal.test/androidx.test.runner.AndroidJUnitRunner',
             read_timeout_s=180, transport_timeout_s=180,
         ):
             chunks.append(chunk)
