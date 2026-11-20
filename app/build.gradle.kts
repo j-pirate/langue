@@ -13,6 +13,19 @@ fun androidString(value: String): String = "\"" + value
 
 val dedicatedPack = providers.gradleProperty("dedicatedPack")
 val generatedAssets = layout.buildDirectory.dir("generated/dedicatedAssets")
+val publicationVersionCode = providers.gradleProperty("appVersionCode").getOrElse("1").toIntOrNull()
+    ?: error("appVersionCode must be a positive integer")
+require(publicationVersionCode > 0) { "appVersionCode must be a positive integer" }
+val publicationVersionName = providers.gradleProperty("appVersionName").getOrElse("1.0.0")
+require(publicationVersionName.isNotBlank()) { "appVersionName must not be blank" }
+
+// Optional local/CI signing. Credentials are never stored in the project or printed.
+val signingVariableNames = listOf("LANGUE_KEYSTORE_FILE", "LANGUE_KEYSTORE_PASSWORD", "LANGUE_KEY_ALIAS", "LANGUE_KEY_PASSWORD")
+val releaseSigning = signingVariableNames.associateWith { providers.environmentVariable(it).orNull }
+val hasReleaseSigning = releaseSigning.values.any { it != null }
+require(!hasReleaseSigning || releaseSigning.values.all { !it.isNullOrBlank() }) {
+    "Release signing requires all four LANGUE_KEYSTORE_FILE, LANGUE_KEYSTORE_PASSWORD, LANGUE_KEY_ALIAS and LANGUE_KEY_PASSWORD variables"
+}
 android {
     namespace = "org.langue.app"
     compileSdk = 35
@@ -20,8 +33,8 @@ android {
         applicationId = "org.langue.universal"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = publicationVersionCode
+        versionName = publicationVersionName
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     flavorDimensions += "distribution"
@@ -56,6 +69,10 @@ android {
     testOptions {
         unitTests.isIncludeAndroidResources = true
         unitTests.all { test ->
+            val testUserHome = gradle.gradleUserHomeDir.resolve("langue-test-user-home")
+            test.systemProperty("user.home", testUserHome.absolutePath)
+            test.doFirst { testUserHome.mkdirs() }
+            test.maxHeapSize = "2g"
             test.systemProperty("robolectric.dependency.repo.url", "https://repo.maven.apache.org/maven2")
             // Java test processes need the same optional proxy settings as the build JVM.
             listOf("https.proxyHost", "https.proxyPort", "http.proxyHost", "http.proxyPort", "javax.net.ssl.trustStore").forEach { key ->
@@ -63,8 +80,19 @@ android {
             }
         }
     }
+    if (hasReleaseSigning) {
+        signingConfigs.create("production") {
+            storeFile = file(releaseSigning.getValue("LANGUE_KEYSTORE_FILE")!!)
+            storePassword = releaseSigning.getValue("LANGUE_KEYSTORE_PASSWORD")
+            keyAlias = releaseSigning.getValue("LANGUE_KEY_ALIAS")
+            keyPassword = releaseSigning.getValue("LANGUE_KEY_PASSWORD")
+        }
+    }
     buildTypes {
-        release { isMinifyEnabled = false }
+        release {
+            isMinifyEnabled = false
+            if (hasReleaseSigning) signingConfig = signingConfigs.getByName("production")
+        }
     }
 }
 

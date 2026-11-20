@@ -6,6 +6,7 @@ import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.media.MediaPlayer
 import java.io.File
+import android.util.Log
 
 /** One local stream at a time. A new play, lost audio focus, or lifecycle stop releases the old player. */
 class OfflineAudioPlayer(context: Context) {
@@ -22,6 +23,7 @@ class OfflineAudioPlayer(context: Context) {
     fun play(file: File, onError: () -> Unit) {
         stop()
         if (!file.isFile) {
+            logFailure("source_missing")
             onError()
             return
         }
@@ -34,6 +36,7 @@ class OfflineAudioPlayer(context: Context) {
         focus = request
         if (audioManager.requestAudioFocus(request) != AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
             stop()
+            logFailure("focus_denied")
             onError()
             return
         }
@@ -45,22 +48,25 @@ class OfflineAudioPlayer(context: Context) {
             next.setOnPreparedListener { prepared ->
                 synchronized(this) {
                     if (token == generation && player === prepared) {
-                        try { prepared.start() } catch (_: RuntimeException) { stop(); onError() }
+                        try { prepared.start() } catch (error: RuntimeException) { stop(); logFailure("start", error); onError() }
                     }
                 }
             }
             next.setOnCompletionListener { completed ->
                 synchronized(this) { if (player === completed) stop() }
             }
-            next.setOnErrorListener { failed, _, _ ->
+            next.setOnErrorListener { failed, what, extra ->
                 synchronized(this) {
-                    if (token == generation && player === failed) { stop(); onError() }
+                    if (token == generation && player === failed) {
+                        stop(); logFailure("decode", what = what, extra = extra); onError()
+                    }
                 }
                 true
             }
             next.prepareAsync()
-        } catch (_: Exception) {
+        } catch (error: Exception) {
             stop()
+            logFailure("open", error)
             onError()
         }
     }
@@ -75,4 +81,9 @@ class OfflineAudioPlayer(context: Context) {
     }
 
     fun release() = stop()
+
+    private fun logFailure(stage: String, error: Throwable? = null, what: Int = 0, extra: Int = 0) {
+        // Stages/classes/numeric decoder codes contain no paths, names or audio content.
+        Log.w("LangueAudio", "stage=$stage type=${error?.javaClass?.simpleName ?: "MediaPlayer"} what=$what extra=$extra")
+    }
 }

@@ -11,6 +11,8 @@ import java.util.Locale
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipFile
 import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.SerializationException
+import java.util.concurrent.CancellationException
 
 /** A bounded ZIP reader. Extraction is staged and never overwrites an existing destination. */
 object PackArchive {
@@ -21,11 +23,13 @@ object PackArchive {
     const val MAX_FILES: Int = 5_000
 
     fun extract(input: InputStream, destination: File): LanguagePack {
-        PackValidator.requirePack(!destination.exists(), "La destination existe déjà.")
-        val parent = destination.absoluteFile.parentFile
-        PackValidator.requirePack(parent.isDirectory || parent.mkdirs(), "Dossier d’import inaccessible.")
-        val staging = Files.createTempDirectory(parent.toPath(), ".pack-").toFile()
+        var stagingDirectory: File? = null
         try {
+            PackValidator.requirePack(!destination.exists(), "La destination existe déjà.", FailureReason.STORAGE_UNAVAILABLE)
+            val parent = destination.absoluteFile.parentFile
+            Files.createDirectories(parent.toPath())
+            val staging = Files.createTempDirectory(parent.toPath(), ".pack-").toFile()
+            stagingDirectory = staging
             val archiveFile = File(staging, "archive.zip")
             LimitedInput(input, MAX_ARCHIVE_BYTES).use { source ->
                 archiveFile.outputStream().use { output -> source.copyTo(output) }
@@ -33,10 +37,10 @@ object PackArchive {
             // ZipInputStream alone accepts a truncated archive without its central directory.
             // Opening ZipFile first verifies that the archive is structurally complete.
             val centralNames = ZipFile(archiveFile).use { zip ->
-                PackValidator.requirePack(zip.size() <= MAX_FILES, "Trop de fichiers dans l’archive.")
+                requireArchive(zip.size() <= MAX_FILES, "Trop de fichiers dans l’archive.")
                 zip.entries().asSequence().map { it.name }.toList()
             }
-            val extraction = File(staging, "files").apply { mkdir() }
+            val extraction = File(staging, "files").also { Files.createDirectories(it.toPath()) }
             val localNames = mutableListOf<String>()
             val names = mutableSetOf<String>()
             var total = 0L
@@ -47,18 +51,18 @@ object PackArchive {
                     val item = zip.nextEntry ?: break
                     localNames += item.name
                     count++
-                    PackValidator.requirePack(count <= MAX_FILES, "Trop de fichiers dans l’archive.")
+                    requireArchive(count <= MAX_FILES, "Trop de fichiers dans l’archive.")
                     val path = if (item.isDirectory) item.name.removeSuffix("/") else item.name
-                    PackValidator.requirePack(PackValidator.safeArchivePath(path), "Chemin dangereux dans l’archive.")
+                    requireArchive(PackValidator.safeArchivePath(path), "Chemin dangereux dans l’archive.")
                     val normalized = Normalizer.normalize(path, Normalizer.Form.NFC).lowercase(Locale.ROOT)
-                    PackValidator.requirePack(names.add(normalized), "Chemin dupliqué dans l’archive.")
+                    requireArchive(names.add(normalized), "Chemin dupliqué dans l’archive.")
                     val output = File(extraction, path)
-                    PackValidator.requirePack(output.canonicalPath.startsWith(extraction.canonicalPath + File.separator), "Chemin hors du pack.")
+                    requireArchive(output.canonicalPath.startsWith(extraction.canonicalPath + File.separator), "Chemin hors du pack.")
                     if (item.isDirectory) {
-                        PackValidator.requirePack(output.mkdirs() || output.isDirectory, "Dossier invalide.")
-                        PackValidator.requirePack(zip.read() == -1, "Une entrée de dossier contient des données.")
+                        Files.createDirectories(output.toPath())
+                        requireArchive(zip.read() == -1, "Une entrée de dossier contient des données.")
                     } else {
-                        PackValidator.requirePack(output.parentFile.mkdirs() || output.parentFile.isDirectory, "Chemins en conflit.")
+                        Files.createDirectories(output.parentFile.toPath())
                         var size = 0L
                         output.outputStream().buffered().use { target ->
                             val buffer = ByteArray(16 * 1024)
@@ -67,7 +71,7 @@ object PackArchive {
                                 if (read < 0) break
                                 size += read
                                 total += read
-                                PackValidator.requirePack(size <= MAX_FILE_BYTES && total <= MAX_EXTRACTED_BYTES, "Archive trop volumineuse après extraction.")
+                                requireArchive(size <= MAX_FILE_BYTES && total <= MAX_EXTRACTED_BYTES, "Archive trop volumineuse après extraction.")
                                 target.write(buffer, 0, read)
                             }
                         }
@@ -76,39 +80,51 @@ object PackArchive {
                     zip.closeEntry()
                 }
             }
-            PackValidator.requirePack(localNames.sorted() == centralNames.sorted(), "Les en-têtes de l’archive sont incohérents.")
+            requireArchive(localNames.sorted() == centralNames.sorted(), "Les en-têtes de l’archive sont incohérents.")
             val manifests = files.filter { it == "manifest.json" || it.endsWith("/manifest.json") }
-            PackValidator.requirePack(manifests.size == 1, "Un unique manifest.json est requis.")
+            requireArchive(manifests.size == 1, "Un unique manifest.json est requis.")
             val manifestPath = manifests.single()
             val prefix = manifestPath.removeSuffix("manifest.json")
-            PackValidator.requirePack(prefix.isEmpty() || prefix.count { it == '/' } == 1, "Le pack doit être à la racine ou dans un unique dossier.")
-            PackValidator.requirePack(files.all { it.startsWith(prefix) }, "Plusieurs racines dans l’archive.")
+            requireArchive(prefix.isEmpty() || prefix.count { it == '/' } == 1, "Le pack doit être à la racine ou dans un unique dossier.")
+            requireArchive(files.all { it.startsWith(prefix) }, "Plusieurs racines dans l’archive.")
             val root = if (prefix.isEmpty()) extraction else File(extraction, prefix)
             val relativeFiles = files.map { it.removePrefix(prefix) }
             val required = setOf("manifest.json", "categories.json", "entries.json")
-            PackValidator.requirePack(relativeFiles.containsAll(required), "manifest.json, categories.json et entries.json sont requis.")
-            PackValidator.requirePack(relativeFiles.all { it in required || PackValidator.validAudioPath(it) }, "Fichier non pris en charge dans le pack.")
-            val manifest = PackJson.json.decodeFromString<Manifest>(readJson(File(root, "manifest.json")))
-            val categories = PackJson.json.decodeFromString<List<Category>>(readJson(File(root, "categories.json")))
-            val entries = PackJson.json.decodeFromString<List<Entry>>(readJson(File(root, "entries.json")))
+            requireArchive(relativeFiles.containsAll(required), "manifest.json, categories.json et entries.json sont requis.")
+            requireArchive(relativeFiles.all { it in required || PackValidator.validAudioPath(it) }, "Fichier non pris en charge dans le pack.")
+            val manifest = decodeJson<Manifest>(File(root, "manifest.json"))
+            val categories = decodeJson<List<Category>>(File(root, "categories.json"))
+            val entries = decodeJson<List<Entry>>(File(root, "entries.json"))
             val pack = LanguagePack(manifest, categories, entries)
             PackValidator.validate(pack)
             entries.mapNotNull { it.audio }.forEach { path ->
-                PackValidator.requirePack(File(root, path).isFile, "Fichier audio référencé absent : $path.")
+                PackValidator.requirePack(File(root, path).isFile, "Un fichier audio référencé est absent.", FailureReason.MISSING_AUDIO)
             }
             // Same-filesystem move publishes the complete validated pack, with an optional wrapper removed.
             Files.move(root.toPath(), destination.toPath())
             return pack
         } catch (failure: Exception) {
+            if (failure is CancellationException) throw failure
             if (failure is PackException) throw failure
-            throw PackException("Pack illisible ou malformé.", failure)
+            throw PackException(FailureClassifier.reason(failure, FailureReason.INVALID_ARCHIVE),
+                "Import du pack impossible.", failure)
         } finally {
-            if (staging.exists()) staging.deleteRecursively()
+            // Cleanup must not conceal the actionable failure which triggered it.
+            runCatching { stagingDirectory?.deleteRecursively() }
         }
     }
 
+    private inline fun <reified T> decodeJson(file: File): T = try {
+        PackJson.json.decodeFromString<T>(readJson(file))
+    } catch (error: SerializationException) {
+        throw PackException(FailureReason.INVALID_CONTENT, "Les données du pack sont invalides.", error)
+    }
+
+    private fun requireArchive(valid: Boolean, message: String) =
+        PackValidator.requirePack(valid, message, FailureReason.INVALID_ARCHIVE)
+
     private fun readJson(file: File): String {
-        PackValidator.requirePack(file.length() <= MAX_JSON_BYTES, "Fichier JSON trop volumineux.")
+        requireArchive(file.length() <= MAX_JSON_BYTES, "Fichier JSON trop volumineux.")
         val decoder = StandardCharsets.UTF_8.newDecoder()
             .onMalformedInput(CodingErrorAction.REPORT)
             .onUnmappableCharacter(CodingErrorAction.REPORT)
@@ -126,7 +142,7 @@ object PackArchive {
                 '"' -> inString = true
                 '{', '[' -> {
                     depth++
-                    PackValidator.requirePack(depth <= 32, "JSON trop profondément imbriqué.")
+                    requireArchive(depth <= 32, "JSON trop profondément imbriqué.")
                 }
                 '}', ']' -> depth--
             }
@@ -141,7 +157,7 @@ object PackArchive {
             `in`.read(buffer, offset, length).also { if (it > 0) record(it) }
         private fun record(amount: Int) {
             count += amount
-            PackValidator.requirePack(count <= limit, "Archive compressée trop volumineuse.")
+            requireArchive(count <= limit, "Archive compressée trop volumineuse.")
         }
     }
 }

@@ -7,14 +7,14 @@ object PackValidator {
     private val languageTag = Regex("[A-Za-z]{2,8}(-[A-Za-z0-9]{1,8})*")
 
     fun validate(pack: LanguagePack) {
-        requirePack(pack.manifest.schemaVersion == 1, "Version de schéma non prise en charge.")
+        requirePack(pack.manifest.schemaVersion == 1, "Version de schéma non prise en charge.", FailureReason.INCOMPATIBLE_PACK)
         requirePack(identifier.matches(pack.manifest.id), "Identifiant de pack invalide.")
         text(pack.manifest.name, "Nom du pack")
-        requirePack(pack.manifest.version >= 1, "La version du pack doit être positive.")
+        requirePack(pack.manifest.version >= 1, "La version du pack doit être positive.", FailureReason.INVALID_VERSION)
         listOf(pack.manifest.sourceLanguage, pack.manifest.targetLanguage).forEach {
-            requirePack(languageTag.matches(it.tag), "Code de langue BCP 47 invalide.")
+            requirePack(languageTag.matches(it.tag), "Code de langue BCP 47 invalide.", FailureReason.INCOMPATIBLE_PACK)
             text(it.name, "Nom de langue")
-            requirePack(it.direction in setOf("auto", "ltr", "rtl"), "Direction de langue invalide.")
+            requirePack(it.direction in setOf("auto", "ltr", "rtl"), "Direction de langue invalide.", FailureReason.INCOMPATIBLE_PACK)
         }
         pack.manifest.description?.let { text(it, "Description", 10_000) }
         requirePack(pack.categories.size <= 5_000, "Trop de catégories.")
@@ -31,13 +31,13 @@ object PackValidator {
         }
         pack.entries.forEach {
             requirePack(identifier.matches(it.id), "Identifiant d’élément invalide.")
-            requirePack(it.categoryId in categoryIds, "Catégorie introuvable pour ${it.id}.")
+            requirePack(it.categoryId in categoryIds, "Une catégorie référencée est introuvable.", FailureReason.UNKNOWN_CATEGORY)
             text(it.source, "Texte source")
             text(it.target, "Texte cible")
-            requirePack(it.alternatives.size <= 100, "Trop de variantes pour ${it.id}.")
+            requirePack(it.alternatives.size <= 100, "Trop de variantes pour un élément.")
             it.alternatives.forEach { variant -> text(variant, "Variante") }
             it.transliteration?.let { value -> text(value, "Translittération") }
-            it.audio?.let { path -> requirePack(validAudioPath(path), "Référence audio invalide pour ${it.id}.") }
+            it.audio?.let { path -> requirePack(validAudioPath(path), "Référence audio invalide.") }
         }
     }
 
@@ -54,7 +54,7 @@ object PackValidator {
         requirePack(value.isNotBlank() && value.length <= max && value.none { it == '\u0000' }, "$field vide ou trop long.")
     }
 
-    internal fun requirePack(valid: Boolean, message: String) {
-        if (!valid) throw PackException(message)
+    internal fun requirePack(valid: Boolean, message: String, reason: FailureReason = FailureReason.INVALID_CONTENT) {
+        if (!valid) throw PackException(reason, message)
     }
 }

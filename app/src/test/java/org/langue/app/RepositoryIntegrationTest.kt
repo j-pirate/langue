@@ -163,6 +163,28 @@ class RepositoryIntegrationTest {
         assertEquals(1, File(root, "packs").listFiles()!!.size)
     }
 
+    @Test fun unicodeAndRtlDataRoundTripThroughRoomSearchAndProgressBackup() = runBlocking {
+        val entry = org.langue.engine.Entry("unicode.1", "test.category", "E\u0301chantillon 𐐀", "العَرَبِيَّة ١",
+            alternatives = listOf("עִבְרִית"), transliteration = "unicode alif")
+        val fixture = TestPacks.pack(entries = listOf(entry))
+        repository.importPack(TestPacks.zip(fixture))
+        repository.markViewed(entry.id)
+        repository.recordAnswer(true)
+        val backup = repository.exportProgress()
+        val reopened = createRepository().also { reopenedRepositories += it }
+        reopened.initialize()
+        val loaded = reopened.activePack.first()!!
+        assertEquals(fixture, loaded)
+        assertEquals("rtl", loaded.manifest.targetLanguage.direction)
+        for (query in listOf("echantillon", "العربية", "עברית", "unicode alif", "𐐀")) {
+            assertEquals(listOf(entry.id), VocabularySearch.search(loaded, query).map { it.id })
+        }
+        reopened.resetProgress()
+        reopened.restoreProgress(backup)
+        assertEquals(QuizStats(1, 1, 1, 1), reopened.progress.first())
+        assertEquals(setOf(entry.id), reopened.viewedEntryIds.first())
+    }
+
     private suspend fun expectFailure(block: suspend () -> Unit) {
         try { block(); fail("Operation should be rejected") }
         catch (expected: Exception) { /* Assert persisted state in the calling test. */ }

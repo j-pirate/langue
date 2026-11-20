@@ -62,3 +62,13 @@ Aucun accès réseau, identifiant utilisateur, SDK publicitaire ou suivi n’est
 Les données nécessaires aux tests restent dans les sources de test et ne doivent pas entrer dans les assets de production.
 
 Le contrat générique `ExerciseGenerator<Q>` permet de créer d’autres exercices dans `engine`, avec leur propre représentation `Q`, sans dépendre de Room, des packs ZIP ni de Compose. Le quiz à trois choix est la première implémentation.
+
+## Fiabilité des lectures et des exercices
+
+`LangueViewModel` partage un état de bibliothèque dérivé de Room et DataStore. Une erreur de lecture produit un message français sécurisé et invalide la bibliothèque et le quiz ensemble ; l’action Réessayer resouscrit les lecteurs terminés. L’annulation des coroutines reste propagée.
+
+Le pack actif est comparé et préparé sur `Dispatchers.Default`. `QuizEngine.prepare` produit un `PreparedQuiz` immuable, conservé uniquement pour ce pack. Un changement d’identifiant, de version ou de contenu remplace la préparation ; une mise à jour des statistiques ne la reconstruit pas. `PreparedQuiz.next` tire une question et deux groupes concurrents en temps constant, sans renormaliser ni parcourir les entrées. La question précédente est exclue lorsque possible.
+
+Les écrans sont répartis dans `VocabularyScreen.kt`, `QuizScreen.kt`, `SettingsScreen.kt` et `EntryDetail.kt`. `LangueApp.kt` conserve navigation, sélecteurs de documents et cycle de vie ; `UiComponents.kt` et `LangueTheme.kt` regroupent les éléments visuels communs.
+
+`FailureReason` et `FailureClassifier` séparent les causes techniques des textes de présentation. `UiErrorMapper` sélectionne les ressources de `errors.xml`. Les journaux `LangueErrors` contiennent uniquement opération/code/classe ; `LangueAudio` ajoute les étapes et codes numériques du décodeur. Les messages d’exception, traces, URI, identifiants et textes pédagogiques ne sont pas journalisés par ces composants.

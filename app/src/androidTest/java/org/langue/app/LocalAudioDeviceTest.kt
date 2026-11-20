@@ -24,10 +24,22 @@ import org.junit.runner.RunWith
 import org.langue.app.audio.OfflineAudioPlayer
 import org.langue.app.data.AppRepository
 
-/** Runs Android's real local decoder; all generated PCM audio remains in the instrumentation APK. */
+/** Runs Android's real local decoders; generated silence remains in the instrumentation APK. */
 @RunWith(AndroidJUnit4::class)
 class LocalAudioDeviceTest {
-    @Test fun importedWaveActuallyPreparesStartsAndCompletesWithAndroidDecoder() = runBlocking {
+    @Test fun importedWaveActuallyPreparesStartsAndCompletesWithAndroidDecoder() =
+        assertDecodesLocalAudio("wav", TestPacks.tinyWave())
+
+    @Test fun importedMp3ActuallyPreparesStartsAndCompletesWithAndroidDecoder() =
+        assertDecodesLocalAudio("mp3", decoderFixture("silence.mp3"))
+
+    @Test fun importedM4aActuallyPreparesStartsAndCompletesWithAndroidDecoder() =
+        assertDecodesLocalAudio("m4a", decoderFixture("silence.m4a"))
+
+    private fun decoderFixture(name: String): ByteArray =
+        InstrumentationRegistry.getInstrumentation().context.assets.open("decoder-fixtures/$name").use { it.readBytes() }
+
+    private fun assertDecodesLocalAudio(extension: String, bytes: ByteArray): Unit = runBlocking {
         val context: Context = ApplicationProvider.getApplicationContext()
         val id = UUID.randomUUID().toString()
         val root = File(context.cacheDir, "local-audio-$id").also { it.mkdirs() }
@@ -38,7 +50,12 @@ class LocalAudioDeviceTest {
         var player: MediaPlayer? = null
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         try {
-            val pack = repository.importPack(TestPacks.zip(TestPacks.pack()))
+            val original = TestPacks.pack()
+            val path = "audio/decoder.$extension"
+            val fixture = original.copy(entries = original.entries.mapIndexed { index, entry ->
+                if (index == 0) entry.copy(audio = path) else entry
+            })
+            val pack = repository.importPack(TestPacks.zip(fixture, mapOf(path to bytes)))
             val source = repository.audioFile(pack.manifest.id, pack.entries.first())
             assertNotNull(source)
             val prepared = CountDownLatch(1)
@@ -81,6 +98,43 @@ class LocalAudioDeviceTest {
             scope.cancel()
             context.deleteDatabase(database)
             root.deleteRecursively()
+        }
+    }
+
+    @Test fun corruptLocalAudioIsRejectedByAndroidAndReportedByReusablePlayer() {
+        val context: Context = ApplicationProvider.getApplicationContext()
+        val file = File(context.cacheDir, "corrupt-${UUID.randomUUID()}.mp3")
+        // Intentionally invalid media, never a production pack or a downloaded recording.
+        file.writeBytes(ByteArray(1024) { 0x5a })
+        val rejected = CountDownLatch(1)
+        val prepared = AtomicBoolean(false)
+        var player: MediaPlayer? = null
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        try {
+            instrumentation.runOnMainSync {
+                player = MediaPlayer().also { media ->
+                    media.setOnPreparedListener { prepared.set(true); rejected.countDown() }
+                    media.setOnErrorListener { _, _, _ -> rejected.countDown(); true }
+                    try {
+                        media.setDataSource(file.absolutePath)
+                        media.prepareAsync()
+                    } catch (_: java.io.IOException) { rejected.countDown() }
+                    catch (_: IllegalArgumentException) { rejected.countDown() }
+                }
+            }
+            assertTrue("Corrupt local audio did not produce a decoder result", rejected.await(20, TimeUnit.SECONDS))
+            assertFalse("Corrupt local audio unexpectedly prepared", prepared.get())
+            val reported = CountDownLatch(1)
+            var audio: OfflineAudioPlayer? = null
+            try {
+                instrumentation.runOnMainSync {
+                    audio = OfflineAudioPlayer(context).also { it.play(file) { reported.countDown() } }
+                }
+                assertTrue("Reusable player did not report corrupt audio", reported.await(20, TimeUnit.SECONDS))
+            } finally { instrumentation.runOnMainSync { audio?.release() } }
+        } finally {
+            instrumentation.runOnMainSync { player?.release() }
+            file.delete()
         }
     }
 

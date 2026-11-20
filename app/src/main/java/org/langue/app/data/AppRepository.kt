@@ -14,6 +14,7 @@ import java.io.InputStream
 import java.security.MessageDigest
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
@@ -25,6 +26,10 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
+import org.langue.engine.FailureReason
+import org.langue.engine.FailureClassifier
+import org.langue.engine.ReasonedFailure
+import java.nio.file.Files
 import org.langue.engine.Entry
 import org.langue.engine.Category
 import org.langue.engine.LanguagePack
@@ -72,10 +77,10 @@ class AppRepository(
     }
 
     /** Import bundled packs once, including across explicit deletion by the user. */
-    suspend fun initialize() = withContext(Dispatchers.IO) {
+    suspend fun initialize() = storageOperation {
         mutations.withLock {
             if (initialized) return@withLock
-            check(storageDirectory.isDirectory || storageDirectory.mkdirs()) { "Cannot create pack storage" }
+            Files.createDirectories(storageDirectory.toPath())
             removeUnreferencedGenerations()
             val names = appContext.assets.list("packs")?.filter { it.endsWith(".zip", true) }.orEmpty().sorted()
             for (name in names) {
@@ -101,12 +106,12 @@ class AppRepository(
         }
     }
 
-    suspend fun importPack(input: InputStream): LanguagePack = withContext(Dispatchers.IO) {
+    suspend fun importPack(input: InputStream): LanguagePack = storageOperation {
         mutations.withLock { importLocked(input) }
     }
 
     private suspend fun importLocked(input: InputStream, allowExistingNewer: Boolean = false): LanguagePack {
-        check(storageDirectory.isDirectory || storageDirectory.mkdirs()) { "Cannot create pack storage" }
+        Files.createDirectories(storageDirectory.toPath())
         val destination = File(storageDirectory, UUID.randomUUID().toString())
         var committed = false
         try {
@@ -116,11 +121,11 @@ class AppRepository(
                 val previous = decode(old)
                 if (!previous.manifest.sourceLanguage.tag.equals(pack.manifest.sourceLanguage.tag, true) ||
                     !previous.manifest.targetLanguage.tag.equals(pack.manifest.targetLanguage.tag, true)) {
-                    throw PackException("A pack update must preserve its source and target languages")
+                    throw PackException(FailureReason.INCOMPATIBLE_PACK, "Une mise à jour doit conserver les langues du pack.")
                 }
                 if (pack.manifest.version <= previous.manifest.version) {
                     if (allowExistingNewer) return previous
-                    throw PackException("A pack update must have a greater version number")
+                    throw PackException(FailureReason.INVALID_VERSION, "Une mise à jour doit avoir une version supérieure.")
                 }
             }
             database.withTransaction {
@@ -150,14 +155,14 @@ class AppRepository(
         }
     }
 
-    suspend fun selectPack(id: String) = withContext(Dispatchers.IO) {
+    suspend fun selectPack(id: String) = storageOperation {
         mutations.withLock {
-            requireNotNull(dao.metadata(id)) { "Pack is not installed" }
+            if (dao.metadata(id) == null) throw PackException(FailureReason.MISSING_PACK, "Le pack n’est pas installé.")
             preferences.edit { it[ACTIVE_PACK] = id }
         }
     }
 
-    suspend fun deletePack(id: String) = withContext(Dispatchers.IO) {
+    suspend fun deletePack(id: String) = storageOperation {
         mutations.withLock {
             val pack = dao.metadata(id) ?: return@withLock
             database.withTransaction {
@@ -173,7 +178,7 @@ class AppRepository(
         }
     }
 
-    suspend fun markViewed(entryId: String, packId: String? = null) = withContext(Dispatchers.IO) {
+    suspend fun markViewed(entryId: String, packId: String? = null) = storageOperation {
         mutations.withLock {
             val id = packId ?: activeId() ?: return@withLock
             require(dao.entryExists(id, entryId)) { "Entry is not installed" }
@@ -181,10 +186,10 @@ class AppRepository(
         }
     }
 
-    suspend fun recordAnswer(correct: Boolean, packId: String? = null) = withContext(Dispatchers.IO) {
+    suspend fun recordAnswer(correct: Boolean, packId: String? = null) = storageOperation {
         mutations.withLock {
             val id = packId ?: activeId() ?: return@withLock
-            requireNotNull(dao.metadata(id)) { "Pack is not installed" }
+            if (dao.metadata(id) == null) throw PackException(FailureReason.MISSING_PACK, "Le pack n’est pas installé.")
             database.withTransaction {
                 val before = dao.quiz(id) ?: QuizEntity(id)
                 require(before.answered < Int.MAX_VALUE) { "Statistics limit reached; export and reset progression" }
@@ -200,7 +205,7 @@ class AppRepository(
     }
 
     /** Reset the currently selected pack; installed content is preserved. */
-    suspend fun resetProgress() = withContext(Dispatchers.IO) {
+    suspend fun resetProgress() = storageOperation {
         mutations.withLock {
             val id = activeId() ?: return@withLock
             database.withTransaction {
@@ -211,7 +216,7 @@ class AppRepository(
     }
 
     /** Export all installed packs' progression, without copying educational content or audio. */
-    suspend fun exportProgress(): String = withContext(Dispatchers.IO) {
+    suspend fun exportProgress(): String = storageOperation {
         mutations.withLock {
             val snapshot = database.withTransaction {
                 ProgressBackup(packs = dao.metadata().map { row ->
@@ -220,21 +225,32 @@ class AppRepository(
                         dao.viewed(row.id).map { it.entryId }.sorted())
                 })
             }
-            snapshot.validate()
-            PackJson.json.encodeToString(snapshot).also {
-                require(it.length <= MAX_BACKUP_CHARS) { "Progress backup exceeds the supported restore size" }
+            try {
+                snapshot.validate()
+                PackJson.json.encodeToString(snapshot).also {
+                    require(it.length <= MAX_BACKUP_CHARS) { "Progress backup exceeds the supported restore size" }
+                }
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
+                throw ProgressException(cause = error)
             }
         }
     }
 
     /** Strict, atomic restore. All referenced packs must be installed; removed entry IDs are ignored. */
-    suspend fun restoreProgress(json: String) = withContext(Dispatchers.IO) {
-        require(json.length <= MAX_BACKUP_CHARS) { "Progress backup is too large" }
-        val backup = PackJson.json.decodeFromString<ProgressBackup>(json)
-        backup.validate()
+    suspend fun restoreProgress(json: String) = storageOperation {
+        val backup = try {
+            require(json.length <= MAX_BACKUP_CHARS) { "Progress backup is too large" }
+            PackJson.json.decodeFromString<ProgressBackup>(json).also { it.validate() }
+        } catch (error: Exception) {
+            if (error is CancellationException) throw error
+            throw ProgressException(cause = error)
+        }
         mutations.withLock {
             val installed = dao.metadata().map { it.id }.toSet()
-            require(backup.packs.all { it.packId in installed }) { "Install all packs referenced by the backup before restoring" }
+            if (!backup.packs.all { it.packId in installed }) {
+                throw ProgressException(FailureReason.MISSING_PACK, "Des packs nécessaires à la restauration ne sont pas installés.")
+            }
             database.withTransaction {
                 backup.packs.forEach { progress ->
                     val entries = dao.entryIds(progress.packId).toSet()
@@ -248,8 +264,8 @@ class AppRepository(
     }
 
     /** Resolves only files inside the current immutable generation, never arbitrary paths. */
-    suspend fun audioFileForEntry(packId: String, entry: Entry): File? = withContext(Dispatchers.IO) {
-        val row = dao.metadata(packId) ?: return@withContext null
+    suspend fun audioFileForEntry(packId: String, entry: Entry): File? = storageOperation {
+        val row = dao.metadata(packId) ?: return@storageOperation null
         resolveAudio(row, entry)
     }
 
@@ -290,6 +306,19 @@ class AppRepository(
         storageDirectory.listFiles()?.filter { it.name !in known }?.forEach { it.deleteRecursively() }
     }
 
+    private suspend fun <T> storageOperation(block: suspend () -> T): T = withContext(Dispatchers.IO) {
+        try {
+            block()
+        } catch (error: Exception) {
+            if (error is CancellationException) throw error
+            when (val reason = FailureClassifier.reason(error)) {
+                FailureReason.INSUFFICIENT_STORAGE, FailureReason.STORAGE_UNAVAILABLE ->
+                    throw PackException(reason, "Le stockage local est indisponible.", error)
+                else -> throw error
+            }
+        }
+    }
+
     /** For instrumentation tests and orderly ownership; application repositories live for the process. */
     fun close() = database.close()
 
@@ -328,3 +357,10 @@ internal data class PackProgress(
             viewedEntryIds.all { it.isNotBlank() && it.length <= 200 }) { "Invalid viewed entries" }
     }
 }
+
+/** Remains an IllegalArgumentException for callers validating imported progress documents. */
+class ProgressException(
+    override val reason: FailureReason = FailureReason.INVALID_BACKUP,
+    message: String = "La sauvegarde de progression est invalide.",
+    cause: Throwable? = null,
+) : IllegalArgumentException(message, cause), ReasonedFailure
