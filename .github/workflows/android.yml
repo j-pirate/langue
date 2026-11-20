@@ -30,7 +30,9 @@ jobs:
       - name: Android Lint
         run: ./gradlew --no-daemon :app:lintUniversalDebug
       - name: Build empty universal APK
-        run: ./gradlew --no-daemon :app:assembleUniversalDebug
+        run: ./gradlew --no-daemon :app:assembleUniversalDebug -PappVersionCode=2 -PappVersionName=1.1.0
+      - name: Prepare verified test download
+        run: ./scripts/package-test-apk.sh
       - name: Verify dedicated APK and unsigned release bundles
         run: >-
           ./gradlew --no-daemon :app:assembleDedicatedDebug :app:bundleUniversalRelease :app:bundleDedicatedRelease
@@ -55,3 +57,13 @@ jobs:
           path: app/build/outputs/apk/universal/debug/*.apk
           if-no-files-found: error
           retention-days: 14
+      - name: Upload test installation files
+        uses: actions/upload-artifact@v4
+        with:
+          name: langue-installation-test
+          path: |
+            app/build/distribution/test/langue.apk
+            app/build/distribution/test/RELEASE_NOTES.md
+            app/build/distribution/test/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 90

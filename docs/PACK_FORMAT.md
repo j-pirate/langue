@@ -115,7 +115,9 @@ Depuis la racine du projet Android :
 ./gradlew :engine:run --args="/chemin/absolu/mon-pack.zip"
 ```
 
-Distribuer uniquement une archive validée, puis la sélectionner depuis les paramètres Android de l’application. Aucun hébergement ni serveur de packs n’est requis.
+Le validateur utilise la même extraction bornée et les mêmes règles que l’import Android. Un code de sortie non nul signale un refus. Distribuer uniquement une archive validée, puis la sélectionner depuis les paramètres Android de l’application. Aucun hébergement ni serveur de packs n’est requis.
+
+Pour demander la création d’un pack, fournir la combinaison de langues, les catégories, les textes, les variantes et les audios dont vous détenez les droits, puis demander un ZIP conforme au schéma 1. Aucun écran ni fichier Kotlin ne doit être modifié. Les contenus synthétiques des tests restent exclusivement dans les sources de test et ne doivent pas être copiés dans les ressources de production.
 
 ## Mise à jour et quiz
 

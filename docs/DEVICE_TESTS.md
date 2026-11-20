@@ -34,6 +34,8 @@ Pour sélectionner Android 8.0 ou Android 15, préfixer chacune des trois comman
 
 Les tests vérifient le lancement vide et les trois onglets, un parcours de contenu importé, la recherche, les détails, le quiz et la réinitialisation confirmée ; trois tests du dépôt couvrent aussi les mises à jour, la persistance, les sauvegardes et les refus d’import. Les tests audio contrôlent réellement les décodeurs WAV, MP3 et M4A, ainsi qu’un fichier absent ou corrompu. Les tests Unicode vérifient aussi la direction RTL et les sauvegardes après réouverture. Contrôler les sorties audio physiques et le sélecteur de documents sur les appareils de diffusion reste utile avant publication.
 
+Avant une publication, parcourir également sur appareil réel : premier démarrage vide, trois onglets, import d’un pack personnel, recherche et écriture RTL, lecture MP3/M4A, quiz, redémarrage, mise à jour du même pack et restauration d’une sauvegarde. Les tests JVM ne remplacent pas le contrôle des décodeurs audio et des sélecteurs de documents Android.
+
 La suite JVM Robolectric et lint se lancent avec :
 
 ```sh
