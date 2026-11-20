@@ -4,12 +4,17 @@
 Uses the ADB wire protocol directly: native adb requires a writable ~/.android.
 No credentials, application server, or external network service are involved.
 """
+import argparse
 import pathlib
 import os
 import re
-import sys
 import time
 from adb_shell.adb_device import AdbDeviceTcp
+
+parser = argparse.ArgumentParser(description='Run the complete Android device test suite.')
+parser.add_argument('--capture-screen', action='store_true',
+                    help='Also launch the empty app and require a fresh screenshot after the tests.')
+options = parser.parse_args()
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 EXPECTED_API = os.environ.get('LANGUE_TEST_API', '28')
@@ -74,21 +79,24 @@ try:
             print(chunk, end='', flush=True)
     result = ''.join(chunks)
     match = re.search(r'OK \((\d+) tests?\)', result)
-    if not match or int(match.group(1)) != 12 or 'FAILURES!!!' in result:
+    if (not match or int(match.group(1)) != 12 or 'FAILURES!!!' in result or
+            not re.search(r'^INSTRUMENTATION_CODE:\s*-1\s*$', result, re.MULTILINE)):
         raise SystemExit('Android device suite failed; see ' + str(REPORT / 'instrumentation.txt'))
-    shell('am start -W -n org.langue.universal/org.langue.app.MainActivity', transport_timeout_s=60, read_timeout_s=60)
-    for attempt in range(12):
-        shell('rm -f /data/local/tmp/langue-screen.xml')
-        dump = shell('uiautomator dump /data/local/tmp/langue-screen.xml', transport_timeout_s=60, read_timeout_s=60)
-        if 'dumped to:' in dump:
-            hierarchy = shell('cat /data/local/tmp/langue-screen.xml')
-            if 'Aucun contenu disponible.' in hierarchy:
-                break
-        time.sleep(2)
-    else:
-        raise SystemExit('Empty application has not rendered after the device suite')
-    (REPORT / 'empty-app.png').write_bytes(shell('screencap -p', decode=False, read_timeout_s=30))
-    print('\n12 device tests passed; screenshot: ' + str(REPORT / 'empty-app.png'))
+    print('\n12 device tests passed; report: ' + str(REPORT / 'instrumentation.txt'), flush=True)
+    if options.capture_screen:
+        shell('am start -W -n org.langue.universal/org.langue.app.MainActivity', transport_timeout_s=60, read_timeout_s=60)
+        for attempt in range(12):
+            shell('rm -f /data/local/tmp/langue-screen.xml')
+            dump = shell('uiautomator dump /data/local/tmp/langue-screen.xml', transport_timeout_s=60, read_timeout_s=60)
+            if 'dumped to:' in dump:
+                hierarchy = shell('cat /data/local/tmp/langue-screen.xml')
+                if 'Aucun contenu disponible.' in hierarchy:
+                    break
+            time.sleep(2)
+        else:
+            raise SystemExit('Empty application has not rendered after the device suite')
+        (REPORT / 'empty-app.png').write_bytes(shell('screencap -p', decode=False, read_timeout_s=30))
+        print('Screenshot: ' + str(REPORT / 'empty-app.png'), flush=True)
 finally:
     if device:
         device.close()

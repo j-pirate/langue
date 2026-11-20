@@ -12,7 +12,15 @@ bash scripts/start-cloud-emulator.sh
 /workspace/tools/adb-venv/bin/python scripts/run-device-tests.py
 ```
 
-`--build-only` exécute les tests du moteur et compile les APK ainsi que les tests JVM et instrumentés ; il ne prétend pas exécuter les tests Android. Le script Python attend le démarrage réel d’Android, installe les deux APK et lance le runner AndroidJUnitRunner pour le paquet `org.langue.app`, avec un nombre attendu de douze tests. Il exige douze résultats réussis et un bilan `OK`, puis capture l’écran vide.
+`--build-only` exécute les tests du moteur et compile les APK ainsi que les tests JVM et instrumentés ; il ne prétend pas exécuter les tests Android. Le script Python attend le démarrage réel d’Android, installe les deux APK et lance le runner AndroidJUnitRunner pour le paquet `org.langue.app`, avec un nombre attendu de douze tests. Il exige douze résultats réussis, le bilan `OK` et le code final AndroidJUnitRunner `-1`. Son code de sortie reflète ces résultats. La capture d’écran de fin est une opération distincte, demandée avec `--capture-screen`.
+
+Pour demander également une capture d’écran après la suite :
+
+```sh
+/workspace/tools/adb-venv/bin/python scripts/run-device-tests.py --capture-screen
+```
+
+Ce mode vérifie la présence de l’écran vide dans une hiérarchie Android fraîche avant de capturer l’image. S’il échoue, il signale séparément l’échec de cette étape après le bilan des tests. Sans ce drapeau, aucun second lancement à froid n’est imposé après les douze tests.
 
 Le premier démarrage logiciel peut prendre plusieurs minutes. Les rapports sont dans `app/build/reports/device/api26/`, `api28/` ou `api35/` : `instrumentation.txt` et `empty-app.png`. Le journal de l’émulateur est dans `/workspace/tools/emulator.log`. Les processus ne sont pas conservés par une publication de l’environnement : relancer le script de démarrage dans une nouvelle tâche. Une tâche cloud possède déjà son checkout isolé ; aucun worktree supplémentaire n’est nécessaire.
 

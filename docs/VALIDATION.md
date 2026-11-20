@@ -1,4 +1,4 @@
-# Audit et validation du 15 novembre 2026
+# Audit Android : validations du 15 novembre et contrôle du 20 novembre 2026
 
 L’audit conserve Kotlin, Compose, MVVM, Room, DataStore et le schéma de packs 1. Aucun contenu pédagogique n’est ajouté à l’APK universelle. Les essais ci-dessous sont réellement exécutés, sans compter deux fois les répétitions ni les contrôles GitHub Actions.
 
@@ -36,6 +36,8 @@ Le test de charge prépare **50 000 entrées**, puis génère **20 000 questions
 4. Le quiz reconstruisait ses équivalences à chaque question. Une préparation immuable par pack est calculée sur `Dispatchers.Default` puis réutilisée ; un tirage coûte un nombre constant d’opérations.
 5. Les causes d’erreur étaient masquées ; les erreurs de lecture asynchrones pouvaient aussi échapper aux gestionnaires d’actions. Des codes typés, ressources françaises, journaux limités et lecteurs relançables corrigent ces cas.
 
+La suite Android 15 a effectivement réussi ses douze tests, mais le script ancien a ensuite renvoyé le code 1 à cause d’une capture d’écran postérieure aux tests : l’écran attendu n’a pas été retrouvé après un nouveau démarrage à froid. Ce n’était pas un échec de ces douze cas. Le script distingue désormais les opérations : par défaut il exige les douze résultats et le code final `-1` du runner ; `--capture-screen` demande en plus la capture et conserve un échec explicite si celle-ci n’aboutit pas. La capture post-suite sur API 35 reste non validée dans cette émulation logicielle.
+
 Le premier essai Android 15 en émulation logicielle s’est interrompu avant le premier test par un ANR de démarrage. La trace plaçait le thread principal dans la vérification DEX et le système connaissait aussi des ANR au premier démarrage. Après diagnostic et initialisation de l’appareil, le runner a été limité au paquet `org.langue.app`, en exigeant toujours les douze résultats. La réexécution a réussi les douze tests en 161,657 s. Aucun test ni assertion n’a été retiré. L’essai Android 8.0 final a réussi les douze tests en 65,155 s.
 
 ## Compilation et variantes
@@ -65,6 +67,8 @@ Le run initial fourni dans la demande échouait avant Gradle. Après la correcti
 - Artefact `reports`, 51,3 Ko. Les métadonnées et conclusions des étapes ont été vérifiées dans les pages publiques du run.
 
 Le workflow conserve les rapports même en cas d’échec et refuse un téléversement d’APK sans fichier. Il ne signe ni ne publie une application de production. Les avertissements GitHub sur les versions d’actions Node 20 et la migration d’Ubuntu n’ont pas empêché cette compilation.
+
+Une nouvelle vérification publique le **20 novembre 2026** confirme aussi le commit publié `22638c7077bdb809510ba28f0e73a7bc9ae4b430` : [run 43767141191 réussi](https://github.com/j-pirate/langue/actions/runs/43767141191), durée 7 min 12 s, toutes les étapes réussies. [Son artefact APK](https://github.com/j-pirate/langue/actions/runs/43767141191/artifacts/14182708212) pèse 16,3 Mo ; l’artefact `reports` pèse 51,3 Ko.
 
 ## Limites explicites
 
