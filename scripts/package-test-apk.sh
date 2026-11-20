@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Package an existing, signed universal Debug APK; this never publishes a Release.
-set -euo pipefail
+set -Eeuo pipefail
 
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
 apk="$repo_root/app/build/outputs/apk/universal/debug/app-universal-debug.apk"
@@ -32,8 +32,17 @@ HELP
 
 fail() {
     printf 'Packaging refused: %s\n' "$*" >&2
+    if [[ "${GITHUB_ACTIONS:-}" == true ]]; then
+        local annotation="$*"
+        annotation=${annotation//%/%25}
+        annotation=${annotation//$'\r'/%0D}
+        annotation=${annotation//$'\n'/%0A}
+        printf '::error title=Test APK preparation refused::%s\n' "$annotation"
+    fi
     exit 1
 }
+
+trap 'status=$?; if [[ "${GITHUB_ACTIONS:-}" == true ]]; then printf "::error title=Test APK preparation failed::Line %s, exit %s.\n" "$LINENO" "$status"; fi; exit "$status"' ERR
 
 while (($#)); do
     case "$1" in
@@ -85,7 +94,7 @@ certificate_info=$("$apksigner" verify --print-certs "$apk") || fail 'APK signat
 signer_dns=$(sed -n 's/^Signer #[0-9][0-9]* certificate DN: //p' <<< "$certificate_info")
 [[ -n "$signer_dns" ]] || fail 'APK has no verifiable signer certificate'
 while IFS= read -r signer_dn; do
-    [[ "$signer_dn" =~ (^|,\ )CN=Android\ Debug(,|$) ]] || fail 'Every signer must use an Android Debug test certificate'
+    [[ "$signer_dn" =~ (^|,[[:space:]]*)CN=Android[[:space:]]+Debug(,|$) ]] || fail 'Every signer must use an Android Debug test certificate'
 done <<< "$signer_dns"
 
 badging=$("$aapt" dump badging "$apk") || fail 'Cannot read the APK manifest'

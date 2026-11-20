@@ -32,7 +32,7 @@ jobs:
       - name: Build empty universal APK
         run: ./gradlew --no-daemon :app:assembleUniversalDebug -PappVersionCode=2 -PappVersionName=1.1.0
       - name: Prepare verified test download
-        run: ./scripts/package-test-apk.sh
+        run: ./scripts/package-test-apk.sh --build-tools "$ANDROID_HOME/build-tools/35.0.0"
       - name: Verify dedicated APK and unsigned release bundles
         run: >-
           ./gradlew --no-daemon :app:assembleDedicatedDebug :app:bundleUniversalRelease :app:bundleDedicatedRelease
