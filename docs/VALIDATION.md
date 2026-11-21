@@ -74,4 +74,15 @@ Une nouvelle vérification publique le **20 novembre 2026** confirme aussi le co
 
 - Les sorties Release sont non signées : la signature réelle exige la clé d’importation du propriétaire, conservée hors Git. Aucune clé de production n’est générée et aucune publication Google Play n’est effectuée. Voir [GOOGLE_PLAY.md](GOOGLE_PLAY.md), notamment la vérification de l’exigence actuelle de SDK cible.
 - Les sorties audio physiques et les différents fournisseurs du sélecteur de documents SAF n’ont pas été testés sur des téléphones physiques ; les tests utilisent les vraies API et les décodeurs de deux versions Android émulées.
-- L’API `api.github.com` reste refusée par le réseau de la machine (`CONNECT 403`). Le push Git fonctionne et les résultats Actions sont vérifiables publiquement ; l’ouverture automatique d’une nouvelle PR par `gh pr create` est donc bloquée. La PR n° 1 du seul correctif CI a été fusionnée séparément par le propriétaire ; elle ne contient pas les corrections restantes. [Comparaison de la branche de correction](https://github.com/j-pirate/langue/compare/main...fix/android-reliability).
+- L’API `api.github.com` reste refusée par le réseau de la machine (`CONNECT 403`). Le push Git fonctionne et les résultats Actions sont vérifiables publiquement ; l’ouverture automatique d’une nouvelle PR par `gh pr create` est donc bloquée. Pendant l’audit initial, seule la PR n° 1 du correctif CI avait été fusionnée. Le propriétaire a ensuite fusionné la PR n° 2 le 20 novembre 2026 (`be3e134`) ; les corrections de l’audit sont donc désormais présentes dans `main`. [Comparaison de la branche de correction](https://github.com/j-pirate/langue/compare/main...fix/android-reliability).
+
+
+## Préparation du téléchargement du 20 novembre 2026
+
+Le README grand public est simplifié et les explications techniques sont conservées dans la documentation indexée par `docs/README.md`. Aucune source applicative Kotlin, aucun manifeste, aucun format de pack et aucune licence ne sont modifiés par cette réorganisation.
+
+Les **43 tests moteur** et **24 tests unitaires Android** ont été réexécutés avec succès, sans test ignoré. La commande Gradle de compilation universelle et lint a réussi. Les tests instrumentés de l’audit restent ceux rapportés plus haut ; ils n’ont pas été réexécutés pour ce changement documentaire.
+
+L’APK de test préparée utilise le nom de version **1.1.0**, le code **2** et une signature **Android Debug** vérifiée avec `apksigner`. Son manifeste est débogable. Le paquet `langue.apk` / `RELEASE_NOTES.md` / `SHA256SUMS.txt` a été préparé et ses deux empreintes vérifiées. Les refus d’APK malformée, non signée, de version incorrecte et de notes sans mention du statut de test ont aussi été exercés sur le script de paquetage.
+
+Aucune Release n’existe lors de cette préparation : la page GitHub Releases renvoie 200 avec une liste vide, et `releases/latest/download/langue.apk` renvoie 404. Le README ne présente donc pas ce lien comme disponible. La publication manuelle d’une version clairement étiquetée **test** et l’activation ultérieure du lien sont détaillées dans `docs/GITHUB_RELEASES.md`. Aucune version de production n’est publiée automatiquement et aucune clé de production n’est créée ou ajoutée au dépôt.

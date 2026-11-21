@@ -2,6 +2,8 @@
 
 Depuis **Paramètres**, exporter une sauvegarde JSON à l’emplacement choisi via le sélecteur Android. Le fichier contient la progression de tous les packs installés ; il ne contient ni mots, ni traductions, ni audios. Conserver également les ZIP des packs.
 
+La progression reste dans le stockage privé de l’application. Supprimer un pack supprime aussi sa progression locale ; l’exporter auparavant si nécessaire. La réinitialisation confirmée du pack actif efface ses résultats sans retirer son contenu. La sauvegarde automatique Android est désactivée : l’export explicite reste sous votre contrôle. Conserver l’export et les ZIP originaux avant toute désinstallation.
+
 Structure :
 
 ```json
